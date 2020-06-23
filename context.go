@@ -1,6 +1,9 @@
 package ms
 
+import "context"
+
 type Context struct {
+	context.Context
 	srv                 *Server
 	conn                *msConn
 	payload             []byte
@@ -11,6 +14,7 @@ type Context struct {
 
 func newContext(srv *Server, conn *msConn, payload []byte) *Context {
 	return &Context{
+		Context:             context.TODO(),
 		srv:                 srv,
 		payload:             payload,
 		currentHandlerIndex: -1,
