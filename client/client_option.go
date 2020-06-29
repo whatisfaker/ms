@@ -3,6 +3,7 @@ package client
 import (
 	"time"
 
+	"github.com/whatisfaker/ms"
 	"github.com/whatisfaker/ms/codec"
 )
 
@@ -13,7 +14,7 @@ type clientOptions struct {
 	bufferMax         int
 	connectionTimeout time.Duration
 	extractRouteKey   func([]byte) int
-	loglevel          string
+	log               ms.Log
 	autoReconnect     bool
 }
 
@@ -50,9 +51,17 @@ func AutoReconnect(rec bool) ClientOption {
 	})
 }
 
+//LogLevel 调试等级(debug, info, warn, error) 默认info
 func LogLevel(level string) ClientOption {
 	return newFuncClientOption(func(o *clientOptions) {
-		o.loglevel = level
+		o.log.Level(level)
+	})
+}
+
+//Logger 自定义日志记录
+func Logger(logger ms.Log) ClientOption {
+	return newFuncClientOption(func(o *clientOptions) {
+		o.log = logger
 	})
 }
 

@@ -15,6 +15,8 @@ type LengthFieldCodec struct {
 	dataOffset  int
 }
 
+//NewLengthFieldCodec 包长度解码/编码（字节顺序,长度字段偏移,长度字段长度（1,2,4,8),数据端长度的调整(长度字段的数据可能包括长度字段自己，也可能不包括, 这个数值可以正负),最后数据包需要截断的字节)
+// refer to https://netty.io/4.0/api/io/netty/handler/codec/LengthFieldBasedFrameDecoder.html
 func NewLengthFieldCodec(byteOrder binary.ByteOrder, fieldOffset uint, fieldLength uint, adjustment int, trip uint) Codec {
 	return &LengthFieldCodec{
 		byteOrder:   byteOrder,

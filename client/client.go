@@ -7,9 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/whatisfaker/ms"
 	"github.com/whatisfaker/ms/codec"
-	"github.com/whatisfaker/zaptrace/log"
-	"go.uber.org/zap"
 )
 
 const (
@@ -24,7 +23,7 @@ type Client struct {
 	addr     string
 	handler  func([]byte)
 	handlers map[int]func([]byte)
-	log      *log.Factory
+	log      ms.Log
 	closed   uint32
 }
 
@@ -34,7 +33,7 @@ func NewClient(addr string, opts ...ClientOption) *Client {
 		bufferInitialSize: bufferDefaultInitSize,
 		bufferMax:         bufio.MaxScanTokenSize,
 		connectionTimeout: defaultTimeout,
-		loglevel:          "info",
+		log:               ms.NewDefaultLogger("info"),
 	}
 	for _, opt := range opts {
 		opt.apply(sOpts)
@@ -46,7 +45,7 @@ func NewClient(addr string, opts ...ClientOption) *Client {
 	c := &Client{
 		handlers: make(map[int]func([]byte)),
 		handler:  func([]byte) {},
-		log:      log.NewStdLogger(sOpts.loglevel),
+		log:      sOpts.log,
 		opts:     sOpts,
 		addr:     addr,
 	}
@@ -65,7 +64,7 @@ func (c *Client) start() {
 	atomic.StoreUint32(&c.closed, 0)
 }
 
-func (c *Client) isClosed() bool {
+func (c *Client) IsClosed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
 }
 
@@ -99,11 +98,8 @@ func (c *Client) recv() error {
 
 func (c *Client) connect() error {
 	var err error
-	c.start()
 	c.conn, err = net.DialTimeout("tcp", c.addr, c.opts.connectionTimeout)
 	if err != nil {
-		//closed
-		c.close()
 		return err
 	}
 	//openned
@@ -129,25 +125,25 @@ func (c *Client) Handle(handler func([]byte)) {
 func (c *Client) Start() error {
 	err := c.connect()
 	if err != nil {
-		c.log.Normal().Error("connect error", zap.Error(err))
+		c.log.Error("connect error", err)
 	}
 	if c.opts.autoReconnect {
-		c.log.Normal().Info("try reconnect 1")
+		c.log.Info("try reconnect 1")
 		timer := time.NewTimer(5 * time.Second)
 		<-timer.C
 		err = c.connect()
 		if err != nil {
-			c.log.Normal().Error("connect error", zap.Error(err))
+			c.log.Error("connect error", err)
 		}
-		c.log.Normal().Info("try reconnect 2")
+		c.log.Info("try reconnect 2")
 		timer = time.NewTimer(10 * time.Second)
 		<-timer.C
 		err = c.connect()
 		if err != nil {
-			c.log.Normal().Error("connect error", zap.Error(err))
+			c.log.Error("connect error", err)
 		}
 	}
-	c.log.Normal().Info("disconnect")
+	c.log.Info("disconnect")
 	return err
 }
 
@@ -161,13 +157,13 @@ func (c *Client) Send(b []byte) error {
 
 func (c *Client) rawSend(b []byte) error {
 	//已经关闭
-	if c.isClosed() {
+	if c.IsClosed() {
 		return nil
 	}
 	if c.conn != nil {
 		_, err := c.conn.Write(b)
 		if err != nil {
-			if !c.isClosed() {
+			if !c.IsClosed() {
 				c.close()
 			}
 			return err

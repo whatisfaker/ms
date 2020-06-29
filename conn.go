@@ -5,8 +5,6 @@ import (
 	"sync"
 
 	"github.com/whatisfaker/ms/codec"
-	"github.com/whatisfaker/zaptrace/log"
-	"go.uber.org/zap"
 )
 
 type msConn struct {
@@ -14,11 +12,11 @@ type msConn struct {
 	conn   net.Conn
 	codec  codec.Codec
 	send   chan []byte
-	log    *log.Factory
+	log    Log
 	closed bool
 }
 
-func newConn(srv *Server, conn net.Conn, codec codec.Codec, log *log.Factory) *msConn {
+func newConn(srv *Server, conn net.Conn, codec codec.Codec, log Log) *msConn {
 	con := &msConn{
 		conn:  conn,
 		codec: codec,
@@ -39,7 +37,7 @@ func (c *msConn) Close() {
 	if c.closed {
 		return
 	}
-	c.log.Normal().Debug("close conn")
+	c.log.Debug("close conn")
 	c.closed = true
 	close(c.send)
 	c.conn.Close()
@@ -52,7 +50,7 @@ func (c *msConn) write(b []byte) {
 	}
 	dt, err := c.codec.Encode(b)
 	if err != nil {
-		c.log.Normal().Error("msConn data encode error", zap.Error(err))
+		c.log.Error("msConn data encode error", err)
 		return
 	}
 	c.send <- dt
@@ -63,7 +61,7 @@ func (c *msConn) writeProc() {
 		if b, ok := <-c.send; ok {
 			_, err := c.conn.Write(b)
 			if err != nil {
-				c.log.Normal().Error("send error", zap.Error(err))
+				c.log.Error("send error", err)
 				break
 			}
 		} else {

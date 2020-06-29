@@ -13,7 +13,7 @@ type serverOptions struct {
 	bufferMax         int
 	connMaxIdleTime   time.Duration
 	extractRouteKey   func([]byte) int
-	loglevel          string
+	log               Log
 	webEnabled        bool
 	webListen         string
 }
@@ -36,22 +36,34 @@ func newFuncServerOption(f func(*serverOptions)) *funcServerOption {
 	}
 }
 
-//WebStatus 是否开启HTTP访问服务器状态页
-func WebStatus(enabled bool, listen string) ServerOption {
+//WebStatus 是否开启HTTP访问服务器状态页(设置为空为关闭，默认关闭，例子:":8080" 访问http 8080端口)
+func WebStatus(listen string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
-		o.webEnabled = enabled
-		o.webListen = listen
+		if listen != "" {
+			o.webEnabled = true
+			o.webListen = listen
+		} else {
+			o.webEnabled = false
+			o.webListen = ""
+		}
 	})
 }
 
-//LogLevel 调试等级(debug, info, warn, error, fatal)
+//LogLevel 调试等级(debug, info, warn, error) 默认info
 func LogLevel(level string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
-		o.loglevel = level
+		o.log.Level(level)
 	})
 }
 
-//BufferSize 数据读取的缓存区（初始化大小，最大长度 ）
+//Logger 自定义日志记录
+func Logger(logger Log) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.log = logger
+	})
+}
+
+//BufferSize 数据读取的缓存区（初始化大小，第一次最大读取长度）默认4096字节
 func BufferSize(s int, max ...int) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.bufferInitialSize = s
@@ -61,28 +73,28 @@ func BufferSize(s int, max ...int) ServerOption {
 	})
 }
 
-//Codec TCP数据拆包的数据编码/解码器
+//Codec TCP数据拆包的数据解码器（默认LineCodec)
 func Codec(cc codec.Codec) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.codec = cc
 	})
 }
 
-//ClientCodec 发送给客户端的数据编码/解码器 （如果不设置默认为和拆包Codec一致)
+//ClientCodec 发送给客户端封包的数据编码器 （如果不设置默认为和拆包Codec一致)
 func ClientCodec(cc codec.Codec) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.clientCodec = cc
 	})
 }
 
-//ConnMaxIdleTime 链接最大空闲时间
+//ConnMaxIdleTime 链接最大空闲时间(超过最大空闲时间,链接自动关闭,默认为0永不关闭)
 func ConnMaxIdleTime(d time.Duration) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.connMaxIdleTime = d
 	})
 }
 
-//RouterKeyExtract 数据解包对应的路由解析函数
+//RouterKeyExtract 数据解包对应的路由解析函数（可选项,和Route搭配使用)默认为空
 func RouterKeyExtract(fn func([]byte) int) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.extractRouteKey = fn

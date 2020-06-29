@@ -3,6 +3,7 @@ package ms
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -10,18 +11,17 @@ import (
 	"time"
 
 	"github.com/whatisfaker/ms/codec"
-	"github.com/whatisfaker/zaptrace/log"
-	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
 	bufferDefaultInitSize  = 4096
-	defaultConnMaxIdleTime = 30 * time.Second
+	defaultConnMaxIdleTime = 0 * time.Second
 )
 
 type Server struct {
 	opts               *serverOptions
-	log                *log.Factory
+	log                Log
 	mu                 sync.Mutex
 	msConns            map[*msConn]bool
 	dispatchMap        map[int][]*msConn
@@ -29,6 +29,7 @@ type Server struct {
 	routeMap           map[int][]func(*Context)
 	globalMW           []func(*Context)
 	inShutdown         int32
+	statusServer       *http.Server
 }
 
 func NewServer(opts ...ServerOption) *Server {
@@ -37,9 +38,7 @@ func NewServer(opts ...ServerOption) *Server {
 		bufferInitialSize: bufferDefaultInitSize,
 		bufferMax:         bufio.MaxScanTokenSize,
 		connMaxIdleTime:   defaultConnMaxIdleTime,
-		loglevel:          "info",
-		webEnabled:        true,
-		webListen:         ":7456",
+		log:               NewDefaultLogger("info"),
 	}
 	for _, opt := range opts {
 		opt.apply(sOpts)
@@ -50,36 +49,26 @@ func NewServer(opts ...ServerOption) *Server {
 	}
 	return &Server{
 		msConns:            make(map[*msConn]bool),
-		log:                log.NewStdLogger(sOpts.loglevel),
 		opts:               sOpts,
+		log:                sOpts.log,
 		dispatchMap:        make(map[int][]*msConn),
 		dispatchReverseMap: make(map[*msConn]int),
 		routeMap:           make(map[int][]func(*Context)),
 	}
 }
 
-var shutdownPollInterval = 500 * time.Millisecond
-
 //Shutdown 关闭服务
 func (c *Server) Shutdown(ctx context.Context) error {
 	//TODO
 	atomic.StoreInt32(&c.inShutdown, 1)
-	ticker := time.NewTicker(shutdownPollInterval)
-	defer ticker.Stop()
-	for {
-		c.closeConns()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-func (c *Server) closeConns() {
+	defer atomic.StoreInt32(&c.inShutdown, 0)
 	for conn := range c.msConns {
 		c.removeConn(conn)
 	}
+	if c.statusServer != nil {
+		return c.statusServer.Shutdown(ctx)
+	}
+	return nil
 }
 
 func (c *Server) shuttingDown() bool {
@@ -87,25 +76,55 @@ func (c *Server) shuttingDown() bool {
 }
 
 //Serve 开始服务(block func)
-func (c *Server) Serve(lis net.Listener) error {
+func (c *Server) Serve(ctx context.Context, lis net.Listener) error {
+	grp, ctx := errgroup.WithContext(ctx)
 	if c.opts.webEnabled {
 		sh := NewStatusContainer(c)
 		mux := http.NewServeMux()
 		mux.HandleFunc("/", sh.StatusHandler)
-		go func() {
-			err := http.ListenAndServe(c.opts.webListen, mux)
-			if err != nil {
-				c.log.Normal().Error("web server start error", zap.Error(err))
-			}
-		}()
-	}
-	for {
-		conn, err := lis.Accept()
-		if err != nil {
-			return err
+		c.statusServer = &http.Server{
+			Addr:    c.opts.webListen,
+			Handler: mux,
 		}
-		go c.handleConn(conn)
+		grp.Go(func() error {
+			quit := make(chan error)
+			defer close(quit)
+			go func() {
+				c.log.Info(fmt.Sprintf("status web server start %s", c.opts.webListen))
+				// service connections
+				if err := c.statusServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					quit <- err
+					return
+				}
+				quit <- nil
+			}()
+			select {
+			case err := <-quit:
+				if err != nil {
+					c.log.Error("start status web server error", err)
+					return err
+				}
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
 	}
+	grp.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			conn, err := lis.Accept()
+			if err != nil {
+				return err
+			}
+			go c.handleConn(conn)
+		}
+	})
+	return grp.Wait()
 }
 
 func (c *Server) broadCast(b []byte) {
@@ -209,9 +228,9 @@ func (c *Server) handleConn(conn net.Conn) {
 	scanner.Split(c.opts.codec.Split)
 	buf := make([]byte, c.opts.bufferInitialSize)
 	scanner.Buffer(buf, c.opts.bufferMax)
-	msConn := newConn(c, conn, c.opts.clientCodec, c.log.With(zap.String("component", "msConn")))
+	msConn := newConn(c, conn, c.opts.clientCodec, c.log)
 	if !c.addConn(msConn) {
-		c.log.Normal().Warn("add msConn false")
+		c.log.Warn("add msConn false")
 		return
 	}
 	messages := make(chan []byte)
@@ -229,13 +248,14 @@ func (c *Server) handleConn(conn net.Conn) {
 				}
 				if netErr, ok := err.(net.Error); ok {
 					if !netErr.Temporary() || try > 3 {
-						c.log.Normal().Error("scanner scan error", zap.Error(err))
+						c.log.Error("scanner scan error", err)
 					} else {
 						try++
-						c.log.Normal().Warn("scanner scan error temporary", zap.Int("retry", try))
+						c.log.Warn("scanner scan error temporary", "retry", try)
+						continue
 					}
 				} else {
-					c.log.Normal().Error("scanner scan error", zap.Error(err))
+					c.log.Error("scanner scan error", err)
 				}
 			}
 			//解析失败，或者关闭链接都是直接移除conn
@@ -256,7 +276,7 @@ func (c *Server) handleData(msConn *msConn, msg <-chan []byte) {
 			case <-timer.C:
 				//超时
 				if !msConn.IsClosed() {
-					c.log.Normal().Debug("timeout")
+					c.log.Debug("timeout")
 					c.removeConn(msConn)
 				}
 				break Loop
@@ -286,6 +306,7 @@ func (c *Server) handleData(msConn *msConn, msg <-chan []byte) {
 			}
 		}
 	} else {
+		//无超时长连接
 		for data := range msg {
 			ctx := newContext(c, msConn, data)
 			if len(c.globalMW) > 0 {
