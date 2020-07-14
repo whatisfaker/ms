@@ -35,7 +35,7 @@ func main() {
 	srv.Route(1, func(ctx *ms.Context) {
 		fmt.Println("route 1", string(ctx.Payload()[3:]))
 		identity := binary.BigEndian.Uint32(ctx.Payload()[3:7])
-		ctx.RegisterDispatcher(int(identity))
+		ctx.RegisterDispatcher(fmt.Sprint(identity))
 		data := append([]byte{2}, []byte("reg reply")...)
 		ctx.Reply(data)
 	})
@@ -43,7 +43,7 @@ func main() {
 		fmt.Println("route 2", string(ctx.Payload()[3:]))
 		identity := binary.BigEndian.Uint32(ctx.Payload()[3:7])
 		if identity/10 == 2 {
-			ctx.ReplyToGroup(append([]byte{2}, []byte("20 to group 10")...), 10)
+			ctx.ReplyToGroup(append([]byte{2}, []byte("20 to group 10")...), "10")
 		}
 		data := append([]byte{2}, []byte("broadcast")...)
 		ctx.BroadCast(data)
