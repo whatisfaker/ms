@@ -338,3 +338,13 @@ func (c *Server) Status() interface{} {
 	}
 	return v
 }
+
+//BroadCast 广播消息给所有连接
+func (c *Server) BroadCast(b []byte) {
+	c.broadCast(b)
+}
+
+//ReplyToGroup 发送消息给指定标识的连接（通过RegisterDispatcher注册的标识）
+func (c *Server) ReplyToGroup(b []byte, identities ...int) {
+	c.sendToDispatchers(b, identities...)
+}
