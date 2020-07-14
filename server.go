@@ -24,8 +24,8 @@ type Server struct {
 	log                Log
 	mu                 sync.Mutex
 	msConns            map[*msConn]bool
-	dispatchMap        map[int][]*msConn
-	dispatchReverseMap map[*msConn]int
+	dispatchMap        map[string][]*msConn
+	dispatchReverseMap map[*msConn]string
 	routeMap           map[int][]func(*Context)
 	globalMW           []func(*Context)
 	inShutdown         int32
@@ -51,8 +51,8 @@ func NewServer(opts ...ServerOption) *Server {
 		msConns:            make(map[*msConn]bool),
 		opts:               sOpts,
 		log:                sOpts.log,
-		dispatchMap:        make(map[int][]*msConn),
-		dispatchReverseMap: make(map[*msConn]int),
+		dispatchMap:        make(map[string][]*msConn),
+		dispatchReverseMap: make(map[*msConn]string),
 		routeMap:           make(map[int][]func(*Context)),
 	}
 }
@@ -134,7 +134,10 @@ func (c *Server) broadCast(b []byte) {
 	}
 }
 
-func (c *Server) sendToDispatchers(b []byte, dispatchers ...int) {
+func (c *Server) sendToDispatchers(b []byte, dispatchers ...string) {
+	//读取dispatcherMap加锁
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, dispatch := range dispatchers {
 		if conns, ok := c.dispatchMap[dispatch]; ok {
 			for _, conn := range conns {
@@ -144,7 +147,7 @@ func (c *Server) sendToDispatchers(b []byte, dispatchers ...int) {
 	}
 }
 
-func (c *Server) registerDispatcher(dispatcherID int, conn *msConn) {
+func (c *Server) registerDispatcher(dispatcherID string, conn *msConn) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	//清理旧conn,例如用户切换
@@ -188,7 +191,8 @@ func (c *Server) removeConn(conn *msConn) {
 	}
 }
 
-func (c *Server) removeDispatcherConn(dispatcherID int, conn *msConn) {
+func (c *Server) removeDispatcherConn(dispatcherID string, conn *msConn) {
+	//在锁内
 	if conns, ok := c.dispatchMap[dispatcherID]; ok {
 		l := len(conns)
 		newConns := make([]*msConn, 0, l)
@@ -345,6 +349,6 @@ func (c *Server) BroadCast(b []byte) {
 }
 
 //ReplyToGroup 发送消息给指定标识的连接（通过RegisterDispatcher注册的标识）
-func (c *Server) ReplyToGroup(b []byte, identities ...int) {
+func (c *Server) ReplyToGroup(b []byte, identities ...string) {
 	c.sendToDispatchers(b, identities...)
 }

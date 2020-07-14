@@ -35,7 +35,7 @@ func (c *Context) Payload() []byte {
 }
 
 //RegisterDispatcher 注册分发标识
-func (c *Context) RegisterDispatcher(identity int) {
+func (c *Context) RegisterDispatcher(identity string) {
 	c.srv.registerDispatcher(identity, c.conn)
 }
 
@@ -59,6 +59,6 @@ func (c *Context) BroadCast(b []byte) {
 }
 
 //ReplyToGroup 发送消息给指定标识的连接（通过RegisterDispatcher注册的标识）
-func (c *Context) ReplyToGroup(b []byte, identities ...int) {
+func (c *Context) ReplyToGroup(b []byte, identities ...string) {
 	c.srv.sendToDispatchers(b, identities...)
 }
