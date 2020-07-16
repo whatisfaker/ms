@@ -1,6 +1,9 @@
 package ms
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type Context struct {
 	context.Context
@@ -10,6 +13,7 @@ type Context struct {
 	hanlders            []func(*Context)
 	currentHandlerIndex int
 	handlersMax         int
+	values              map[string]interface{}
 }
 
 func newContext(srv *Server, conn *msConn, payload []byte) *Context {
@@ -21,6 +25,7 @@ func newContext(srv *Server, conn *msConn, payload []byte) *Context {
 		handlersMax:         0,
 		conn:                conn,
 		hanlders:            make([]func(*Context), 0),
+		values:              map[string]interface{}{},
 	}
 }
 
@@ -32,6 +37,25 @@ func (c *Context) addChainHandlers(hls ...func(*Context)) {
 //Payload 数据包原始内容
 func (c *Context) Payload() []byte {
 	return c.payload
+}
+
+func (c *Context) Set(k string, v interface{}) {
+	c.values[k] = v
+}
+
+func (c *Context) Get(k string) (interface{}, bool) {
+	if v, ok := c.values[k]; ok {
+		return v, ok
+	}
+	return nil, false
+}
+
+func (c *Context) MustGet(k string) interface{} {
+	if v, ok := c.values[k]; ok {
+		return v
+	} else {
+		panic(fmt.Sprintf("no key(%s) found in context", k))
+	}
 }
 
 //RegisterDispatcher 注册分发标识
