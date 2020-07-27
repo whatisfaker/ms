@@ -10,7 +10,7 @@ type Context struct {
 	srv                 *Server
 	conn                *msConn
 	payload             []byte
-	hanlders            []func(*Context)
+	handlers            []func(*Context)
 	currentHandlerIndex int
 	handlersMax         int
 	values              map[string]interface{}
@@ -24,14 +24,14 @@ func newContext(srv *Server, conn *msConn, payload []byte) *Context {
 		currentHandlerIndex: -1,
 		handlersMax:         0,
 		conn:                conn,
-		hanlders:            make([]func(*Context), 0),
+		handlers:            make([]func(*Context), 0),
 		values:              map[string]interface{}{},
 	}
 }
 
 func (c *Context) addChainHandlers(hls ...func(*Context)) {
-	c.hanlders = append(c.hanlders, hls...)
-	c.handlersMax = len(c.hanlders)
+	c.handlers = append(c.handlers, hls...)
+	c.handlersMax = len(c.handlers)
 }
 
 //Payload 数据包原始内容
@@ -69,7 +69,7 @@ func (c *Context) Next() {
 		return
 	}
 	c.currentHandlerIndex++
-	c.hanlders[c.currentHandlerIndex](c)
+	c.handlers[c.currentHandlerIndex](c)
 }
 
 //Reply 回复给当前连接发送方
