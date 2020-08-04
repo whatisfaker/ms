@@ -352,3 +352,21 @@ func (c *Server) BroadCast(b []byte) {
 func (c *Server) ReplyToGroup(b []byte, identities ...string) {
 	c.sendToDispatchers(b, identities...)
 }
+
+//IsOnline 返回还在线的identidies
+func (c *Server) IsOnline(identities ...string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ret := make([]string, 0, len(identities))
+	for _, dispatch := range identities {
+		if _, ok := c.dispatchMap[dispatch]; ok {
+			ret = append(ret, dispatch)
+		}
+	}
+	return ret
+}
+
+//Onlines 返回在线人数
+func (c *Server) Onlines() int {
+	return len(c.dispatchMap)
+}
