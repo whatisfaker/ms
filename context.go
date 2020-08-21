@@ -58,6 +58,10 @@ func (c *Context) MustGet(k string) interface{} {
 	}
 }
 
+func (c *Context) Identity() string {
+	return c.srv.dispatcherID(c.conn)
+}
+
 //RegisterDispatcher 注册分发标识
 func (c *Context) RegisterDispatcher(identity string) {
 	c.srv.registerDispatcher(identity, c.conn)
@@ -85,4 +89,9 @@ func (c *Context) BroadCast(b []byte) {
 //ReplyToGroup 发送消息给指定标识的连接（通过RegisterDispatcher注册的标识）
 func (c *Context) ReplyToGroup(b []byte, identities ...string) {
 	c.srv.sendToDispatchers(b, identities...)
+}
+
+//ReplyToGroup 发送消息给非指定标识的连接（通过RegisterDispatcher注册的标识）
+func (c *Context) ReplyToGroupExcept(b []byte, identities ...string) {
+	c.srv.sendToDispatchersExcept(b, identities...)
 }

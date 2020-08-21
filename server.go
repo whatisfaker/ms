@@ -147,6 +147,35 @@ func (c *Server) sendToDispatchers(b []byte, dispatchers ...string) {
 	}
 }
 
+func (c *Server) sendToDispatchersExcept(b []byte, dispatchers ...string) {
+	//读取dispatcherMap加锁
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	mp := make(map[string]bool)
+	for _, v := range dispatchers {
+		mp[v] = true
+	}
+	for conn := range c.msConns {
+		//跳过排他
+		if id, ok := c.dispatchReverseMap[conn]; ok {
+			if _, ok := mp[id]; ok {
+				continue
+			}
+		}
+		//同时下发
+		go conn.write(b)
+	}
+}
+
+func (c *Server) dispatcherID(conn *msConn) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if oldDispatcherID, ok := c.dispatchReverseMap[conn]; ok {
+		return oldDispatcherID
+	}
+	return ""
+}
+
 func (c *Server) registerDispatcher(dispatcherID string, conn *msConn) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -351,6 +380,11 @@ func (c *Server) BroadCast(b []byte) {
 //ReplyToGroup 发送消息给指定标识的连接（通过RegisterDispatcher注册的标识）
 func (c *Server) ReplyToGroup(b []byte, identities ...string) {
 	c.sendToDispatchers(b, identities...)
+}
+
+//ReplyToGroupExcept 发送消息给非指定标识的连接（通过RegisterDispatcher注册的标识）
+func (c *Server) ReplyToGroupExcept(b []byte, identities ...string) {
+	c.sendToDispatchersExcept(b, identities...)
 }
 
 //IsOnline 返回还在线的identidies
