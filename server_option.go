@@ -67,7 +67,7 @@ func Logger(logger Log) ServerOption {
 func BufferSize(s int, max ...int) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.bufferInitialSize = s
-		if len(max) > 0 {
+		if len(max) > 0 && max[0] > s && max[0] < o.bufferMax {
 			o.bufferMax = max[0]
 		}
 	})
