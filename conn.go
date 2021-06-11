@@ -3,6 +3,7 @@ package ms
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/whatisfaker/ms/codec"
 )
@@ -13,7 +14,7 @@ type msConn struct {
 	codec  codec.Codec
 	send   chan []byte
 	log    Log
-	closed bool
+	closed int32
 }
 
 func newConn(srv *Server, conn net.Conn, codec codec.Codec, log Log) *msConn {
@@ -28,23 +29,23 @@ func newConn(srv *Server, conn net.Conn, codec codec.Codec, log Log) *msConn {
 }
 
 func (c *msConn) IsClosed() bool {
-	return c.closed
+	return atomic.LoadInt32(&c.closed) == 1
 }
 
 func (c *msConn) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
+	if c.IsClosed() {
 		return
 	}
 	c.log.Debug("close conn")
-	c.closed = true
+	atomic.AddInt32(&c.closed, 1)
 	close(c.send)
 	c.conn.Close()
 }
 
 func (c *msConn) write(b []byte) {
-	if c.closed {
+	if c.IsClosed() {
 		//已关闭的链接无法写入
 		return
 	}
