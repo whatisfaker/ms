@@ -34,6 +34,10 @@ func (c *Context) addChainHandlers(hls ...func(*Context)) {
 	c.handlersMax = len(c.handlers)
 }
 
+func (c *Context) Disconnect() {
+	c.conn.Close()
+}
+
 //Payload 数据包原始内容
 func (c *Context) Payload() []byte {
 	return c.payload

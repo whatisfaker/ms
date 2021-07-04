@@ -75,6 +75,7 @@ func main() {
 		b[40] = 1
 		fmt.Println("reply 101 data", b)
 		ctx.Reply(b)
+		ctx.Disconnect()
 	})
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)

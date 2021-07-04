@@ -41,7 +41,6 @@ func (c *msConn) Close() {
 	c.log.Debug("close conn")
 	atomic.AddInt32(&c.closed, 1)
 	close(c.send)
-	c.conn.Close()
 }
 
 func (c *msConn) write(b []byte) {
@@ -66,6 +65,7 @@ func (c *msConn) writeProc() {
 				break
 			}
 		} else {
+			c.conn.Close()
 			break
 		}
 	}
